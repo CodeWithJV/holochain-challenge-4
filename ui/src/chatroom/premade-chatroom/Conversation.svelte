@@ -43,14 +43,6 @@
           if (payload.app_entry.type === 'Message')
             hashes = [...hashes, payload.action.hashed.hash]
           break
-        case 'RemoteMessageCreated':
-          if (
-            encodeHashToBase64(payload.room_hash) ===
-            encodeHashToBase64(roomHash)
-          )
-            addMessage(payload.action.hashed.hash)
-          break
-
         default:
           break
       }
@@ -58,10 +50,6 @@
     })
   })
 
-  async function addMessage(message: ActionHash) {
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    hashes = [...hashes, message]
-  }
 
   async function fetchMessages() {
     try {

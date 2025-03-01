@@ -11,8 +11,6 @@ pub fn create_room(room: Room) -> ExternResult<Record> {
         (),
     )?;
 
-    create_link(room.creator.clone(), room_hash.clone(), LinkTypes::MemberToRooms, ())?;
-    create_link(room_hash.clone(), room.creator.clone(), LinkTypes::RoomToMembers, ())?;
 
     let record = get(room_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
         WasmErrorInner::Guest("Could not find the newly created Room".to_string())

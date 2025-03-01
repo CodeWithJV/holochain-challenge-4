@@ -134,14 +134,22 @@ Hint - Breakdown of each step
 ```rust
 #[hdk_extern]
 pub fn get_not_joined_rooms_for_member(member: AgentPubKey) -> ExternResult<Vec<Link>> {
-
-    // Retrieve links to all rooms
-
-    // Retrieve links to all joined rooms
-
-    // Filter the vector of all rooms to only contain items that don't already exist in the joined rooms vector
-
-    // Return the vector
+    let path = Path::from("all_rooms");
+    let all_rooms = get_links(
+        GetLinksInputBuilder::try_new(path.path_entry_hash()?, LinkTypes::AllRooms)?.build()
+    )?;
+    let joined_rooms = get_links(
+        GetLinksInputBuilder::try_new(member, LinkTypes::MemberToRooms)?.build()
+    )?;
+    let joined_rooms_set: HashSet<_> = joined_rooms
+        .into_iter()
+        .map(|r| r.target)
+        .collect();
+    let not_joined_rooms = all_rooms
+        .into_iter()
+        .filter(|room| !joined_rooms_set.contains(&room.target))
+        .collect::<Vec<_>>();
+    Ok(not_joined_rooms)
 }
 ```
 
@@ -239,16 +247,14 @@ Action::Create(_create) => {
             UnitEntryTypes::Message.try_into()?
         {
             // Get the entry off the create action
-
             let record = get(action.hashed.hash.clone(), GetOptions::default())?.unwrap();
-
             let message = record.entry().to_app_option::<Message>().unwrap().unwrap();
 
             // Get the room hash from the entry
             let room_hash = message.room_hash;
 
             // Get the members for the room using the room hash
-            let members: Vec<HoloHash<Agent>> = get_members_for_room(room_hash.clone())?
+            let members: Vec<AgentPubKey> = get_members_for_room(room_hash.clone())?
                 .into_iter()
                 .map(|link| {
                     AgentPubKey::try_from(link.target)
@@ -317,10 +323,88 @@ The issue is that the remote signal is being received and the new message is req
 
 #### 6. Fix the issue of messages being undefined
 
-Unfortunately, there's not a super elegant solution to this. However, a couple of things you could try are:
+This issue isn't just about timing - it's actually an important security consideration. 
 
-- Delay the retrieval of the Message from the DHT by a second or two
-- Or make multiple attempts after 0, 1, 3, 10 seconds etc to retrieve the Message from the DHT
+When we receive a signal that a new message was created, we shouldn't trust the signal content itself. A malicious agent could potentially craft signals claiming to be from anyone. Instead, we should:
+
+1. Receive the signal that contains the hash of the new message
+2. Request the actual message record from the DHT
+3. By doing this, the message goes through proper validation and we know for sure it was actually created by the claimed author
+
+Unfortunately, there's a race condition here - sometimes our code tries to fetch the message before it's fully committed to the DHT. To solve this, we need to implement a retry mechanism in the `Message.svelte` component:
+
+```ts
+// At the top of your <script> section in Message.svelte
+const INITIAL_RETRY_DELAY = 1000; // 1 second
+const MAX_RETRIES = 5;
+let retryCount = 0;
+let retryTimeout: NodeJS.Timeout | undefined;
+
+// Then modify your fetchMessage function to include retries
+async function fetchMessage() {
+  loading = true
+  error = undefined
+
+  try {
+    record = await client.callZome({
+      cap_secret: null,
+      role_name: 'chatroom',
+      zome_name: 'chatroom',
+      fn_name: 'get_message',
+      payload: messageHash,
+    })
+    
+    if (record) {
+      message = decode((record.entry as any).Present.entry) as Message
+      messageCreator = encodeHashToBase64(message?.creator)
+      messageCreatorSliced = messageCreator.slice(0, 7)
+      retryCount = 0; // Reset retry count on success
+    } else {
+      message = undefined;
+      if (retryCount < MAX_RETRIES) {
+        const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+        retryCount++;
+        console.log(`Message not found, retrying in ${delay}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+        retryTimeout = setTimeout(fetchMessage, delay);
+      } else {
+        console.log('Max retries reached, giving up');
+        error = new Error('Failed to load message after maximum retries');
+      }
+    }
+  } catch (e) {
+    console.log(e);
+    error = e;
+    if (retryCount < MAX_RETRIES) {
+      const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+      retryCount++;
+      console.log(`Error fetching message, retrying in ${delay}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+      retryTimeout = setTimeout(fetchMessage, delay);
+    }
+  }
+
+  loading = false
+}
+
+// Don't forget to clean up the timeout in onMount:
+onMount(async () => {
+  // ... your existing code ...
+  
+  // Return a cleanup function
+  return () => {
+    if (retryTimeout) {
+      clearTimeout(retryTimeout);
+    }
+  };
+})
+```
+
+This approach provides several benefits:
+1. **Security**: We're fetching the validated message from the DHT rather than trusting the signal content
+2. **Reliability**: The exponential backoff retry mechanism gives more time for the DHT to fully process the message
+3. **User Experience**: Multiple retry attempts with increasing delays provide the best chance of success
+4. **Error Handling**: We show proper error messages if all retries fail
+
+The key security point is that we never trust the signal content directly - we always fetch and validate the actual message from the DHT.
 
 ## Customizing remote signals
 
@@ -337,6 +421,7 @@ Notice the issue? Any new messages from any chatrooms an agent is in are receive
 #### 4. Navigate to `coordinator/chatroom/src/lib.rs` and add a new variant to the Signal enum called `RemoteMessageCreated`
 
 ```rust
+// Add this to the Signal enum
 RemoteMessageCreated {
     action: SignedActionHashed,
     app_entry: EntryTypes,
@@ -344,6 +429,56 @@ RemoteMessageCreated {
     // Notice the addition of this field!
     room_hash: ActionHash,
 },
+
+// To use this variant, modify your signal_action function
+Action::Create(_create) => {
+    if let Ok(Some(app_entry)) = get_entry_for_action(&action.hashed.hash) {
+        emit_signal(Signal::EntryCreated {
+            app_entry: app_entry.clone(),
+            action: action.clone(),
+        })?;
+
+        // If the create action is of type Message
+        if
+            action.action().entry_type().unwrap().clone() ==
+            UnitEntryTypes::Message.try_into()?
+        {
+            // Get the entry off the create action
+            let record = get(action.hashed.hash.clone(), GetOptions::default())?.unwrap();
+            let message = record.entry().to_app_option::<Message>().unwrap().unwrap();
+            
+            // Get the room hash from the entry
+            let room_hash = message.room_hash;
+            
+            // Get the members for the room using the room hash
+            let members: Vec<AgentPubKey> = get_members_for_room(room_hash.clone())?
+                .into_iter()
+                .map(|link| {
+                    AgentPubKey::try_from(link.target)
+                        .map_err(|_| {
+                            wasm_error!(
+                                WasmErrorInner::Guest(
+                                    String::from("Could not convert link to agent pub key")
+                                )
+                            )
+                        })
+                        .unwrap()
+                })
+                .filter(|agent| *agent != agent_info().unwrap().agent_latest_pubkey)
+                .collect();
+            
+            // Send the RemoteMessageCreated variant instead
+            let remote_signal = Signal::RemoteMessageCreated {
+                app_entry: app_entry.clone(),
+                action: action.clone(),
+                room_hash,
+            };
+            
+            let _ = send_remote_signal(remote_signal, members);
+        }
+    }
+    Ok(())
+}
 ```
 
 #### 5. Modify the `Action::Create` arm of the match statement inside `signal_action` to transmit a `RemoteMessageCreated` signal instead
@@ -351,6 +486,22 @@ RemoteMessageCreated {
 Note - It might be helpful to annotate your EntryTypes with `#[derive(Clone)]`!
 
 #### 6. Inside our frontend, add a new object to the `ChatroomSignal` type for `RemoteMessageCreated`
+
+```typescript
+// Add this to your ChatroomSignal type in types.ts
+export type ChatroomSignal = {
+  type: "EntryCreated";
+  action: SignedActionHashed<Create>;
+  app_entry: EntryTypes;
+} | {
+  type: "RemoteMessageCreated";
+  action: SignedActionHashed<Create>;
+  app_entry: EntryTypes;
+  room_hash: ActionHash;
+} | {
+  // other types...
+};
+```
 
 #### 7. Modify the `client.on()` function to only add the incoming message hash to the hashes array if `payload.room_hash` is equal to the room hash of the current chatroom
 
@@ -360,6 +511,7 @@ Hint
 </summary>
 
 ```ts
+// In Conversation.svelte
 client.on('signal', (signal) => {
   if (!(SignalType.App in signal)) return;
   if (signal.App.zome_name !== "chatroom") return;

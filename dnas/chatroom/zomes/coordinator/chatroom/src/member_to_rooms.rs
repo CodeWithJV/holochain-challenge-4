@@ -36,20 +36,11 @@ pub fn get_members_for_room(room_hash: ActionHash) -> ExternResult<Vec<Link>> {
 
 #[hdk_extern]
 pub fn get_not_joined_rooms_for_member(member: AgentPubKey) -> ExternResult<Vec<Link>> {
-    let path = Path::from("all_rooms");
-    let all_rooms = get_links(
-        GetLinksInputBuilder::try_new(path.path_entry_hash()?, LinkTypes::AllRooms)?.build()
-    )?;
-    let joined_rooms = get_links(
-        GetLinksInputBuilder::try_new(member, LinkTypes::MemberToRooms)?.build()
-    )?;
-    let joined_rooms_set: HashSet<_> = joined_rooms
-        .into_iter()
-        .map(|r| r.target)
-        .collect();
-    let not_joined_rooms = all_rooms
-        .into_iter()
-        .filter(|room| !joined_rooms_set.contains(&room.target))
-        .collect::<Vec<_>>();
-    Ok(not_joined_rooms)
+    // Retrieve links to all rooms
+    
+    // Retrieve links to all joined rooms
+    
+    // Filter the vector of all rooms to only contain items that don't already exist in the joined rooms vector
+    
+    // Return the vector
 }
