@@ -57,6 +57,7 @@ After each scaffold, you should read through the generated content to more deepl
 - Should this field be visible in the UI? `n`
   - Normally you'd choose yes, but in this instance we've created the frontend for you
 - Add another field to the entry? `y`
+- Fild name: `creator`
 - Choose field type: `AgentPubKey`
 - Should a link from the AgentPubKey provided in this field also be created when entries of this type are created? `y`
   - Choosing this option will mean a link is created from the Creator Agent to the room in the DHT
@@ -86,16 +87,16 @@ After each scaffold, you should read through the generated content to more deepl
 - Field name: `creator`
 
 - Add another field to the entry? `y`
-- Choose field type: `Timestamp`
 - Field name: `timestamp`
+- Choose field type: `Timestamp`
 - Should this field be visible in the UI? `n`
 
 - Add another field to the entry? `y`
+- Field name: `room_hash`
 - Choose field type: `ActionHash`
 - Should a link from the ActionHash provided in this field also be created when entries of this type are created? `y`
   - Choosing yes will create a link from this action hash (the room_hash) to the message, when a message is being created
 - Which entry type is this field referring to? `Room`
-- Field name: `room_hash`
 - Add another field to the entry? `n`
 - Which CRUD functions should be scaffolded? - Untick both Update, and Delete options
 
@@ -162,6 +163,17 @@ Don't forget to Press `F5` or `Ctrl + R` to reload the window!
 #### 4. Navigate to `coordinator/chatroom/src/room.rs` and modify the `create_room` function to also create two links: `RoomToMembers` and `MemberToRooms`
 
 This means that when an agent creates a new room, they will also 'join' it as a member.
+
+<details>
+<summary>Hint</summary>
+
+```rust
+    create_link(room.creator.clone(), room_hash.clone(), LinkTypes::MemberToRooms, ())?;
+    create_link(room_hash.clone(), room.creator.clone(), LinkTypes::RoomToMembers, ())?;
+
+```
+
+</details>
 
 ## Sending and receiving remote signals from other Agents
 
@@ -336,6 +348,8 @@ RemoteMessageCreated {
 
 #### 5. Modify the `Action::Create` arm of the match statement inside `signal_action` to transmit a `RemoteMessageCreated` signal instead
 
+Note - It might be helpful to annotate your EntryTypes with `#[derive(Clone)]`!
+
 #### 6. Inside our frontend, add a new object to the `ChatroomSignal` type for `RemoteMessageCreated`
 
 #### 7. Modify the `client.on()` function to only add the incoming message hash to the hashes array if `payload.room_hash` is equal to the room hash of the current chatroom
@@ -347,8 +361,9 @@ Hint
 
 ```ts
 client.on('signal', (signal) => {
-  if (signal.zome_name !== 'chatroom') return
-  const payload = signal.payload as ChatroomSignal
+  if (!(SignalType.App in signal)) return;
+  if (signal.App.zome_name !== "chatroom") return;
+  const payload = signal.App.payload as ChatroomSignal;
   switch (payload.type) {
     case 'EntryCreated':
       if (payload.app_entry.type === 'Message')

@@ -9,7 +9,5 @@ name = "chatroom"
 
 [dependencies]
 hdk = { workspace = true }
-
 serde = { workspace = true }
-
-chatroom_integrity = { workspace = true } 
+chatroom_integrity = { workspace = true }

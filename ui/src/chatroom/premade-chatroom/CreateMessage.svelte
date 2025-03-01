@@ -6,14 +6,11 @@
     AgentPubKey,
     ActionHash,
   } from '@holochain/client'
-  import { clientContext } from '../../contexts'
+  import { type ClientContext, clientContext } from "../../contexts";
   import type { Message } from '../../types'
-  import '@material/mwc-button'
-  import '@material/mwc-snackbar'
-  import type { Snackbar } from '@material/mwc-snackbar'
-  import '@material/mwc-textarea'
 
-  let client: AppClient = (getContext(clientContext) as any).getClient()
+  let client: AppClient;
+  const appClientContext = getContext<ClientContext>(clientContext);
 
   const dispatch = createEventDispatcher()
 
@@ -23,12 +20,11 @@
   let content: string = ''
   let timestamp: number = Date.now()
 
-  let errorSnackbar: Snackbar
-
   $: content, creator, timestamp, roomHash
   $: isMessageValid = true && content !== '' && true
 
-  onMount(() => {
+  onMount(async () => {
+    client = await appClientContext.getClient();
     if (creator === undefined) {
       throw new Error(
         `The creator input is required for the CreateMessage element`
@@ -55,30 +51,34 @@
       dispatch('message-created', {
         messageHash: record.signed_action.hashed.hash,
       })
+      content = '';
     } catch (e) {
-      errorSnackbar.labelText = `Error creating the message: ${error}`
-      errorSnackbar.show()
+      alert(`Error creating the message: ${e.data}`)
     }
   }
 </script>
 
-<mwc-snackbar bind:this={errorSnackbar} leading></mwc-snackbar>
-<div style="display: flex; flex-direction: column; gap: 16px;">
-  <mwc-textarea
-    outlined
-    label="Message"
-    value={content}
-    on:input={(e) => {
-      content = e.target.value
-    }}
-    required
-  ></mwc-textarea>
+<div style="display: flex; flex-direction: column">
+  <span style="font-size: 18px">Create Message</span>
+
+  <div style="margin-bottom: 16px">
+    <textarea
+      on:input={(e) => {
+        content = e.target.value
+      }}
+      on:keydown={(e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          if (isMessageValid) createMessage();
+          e.preventDefault();
+        }
+      }}
+      required
+    >{content}</textarea>
+  </div>
 
   <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <mwc-button
-    raised
-    label="Create Message"
+  <button
     disabled={!isMessageValid}
     on:click={() => createMessage()}
-  ></mwc-button>
+  >Create Message</button>
 </div>

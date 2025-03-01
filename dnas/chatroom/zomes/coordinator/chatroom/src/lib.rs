@@ -1,13 +1,14 @@
+pub mod all_rooms;
 pub mod member_to_rooms;
 pub mod message;
-pub mod all_rooms;
 pub mod room;
-use hdk::prelude::*;
 use chatroom_integrity::*;
-
+use hdk::prelude::*;
 use crate::member_to_rooms::get_members_for_room;
 
-pub fn init(_: ()) -> ExternResult<InitCallbackResult> {
+// Called the first time a zome call is made to the cell containing this zome
+#[hdk_extern]
+pub fn init() -> ExternResult<InitCallbackResult> {
     let mut functions: BTreeSet<(ZomeName, FunctionName)> = BTreeSet::new();
     functions.insert((ZomeName::from("chatroom"), FunctionName::from("recv_remote_signal")));
     create_cap_grant(CapGrantEntry {
@@ -20,11 +21,11 @@ pub fn init(_: ()) -> ExternResult<InitCallbackResult> {
 
 #[hdk_extern]
 fn recv_remote_signal(signal: Signal) -> ExternResult<()> {
-    debug!("Received signal!");
     emit_signal(signal)?;
     Ok(())
 }
 
+// Don't modify this enum if you want the scaffolding tool to generate appropriate signals for your entries and links
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum Signal {
@@ -52,8 +53,10 @@ pub enum Signal {
     },
 }
 
+// Whenever an action is committed, we emit a signal to the UI elements to reactively update them
 #[hdk_extern(infallible)]
 pub fn post_commit(committed_actions: Vec<SignedActionHashed>) {
+    // Don't modify the for loop if you want the scaffolding tool to generate appropriate signals for your entries and links
     for action in committed_actions {
         if let Err(err) = signal_action(action) {
             error!("Error signaling new action: {:?}", err);
@@ -61,33 +64,27 @@ pub fn post_commit(committed_actions: Vec<SignedActionHashed>) {
     }
 }
 
+// Don't modify this function if you want the scaffolding tool to generate appropriate signals for your entries and links
 fn signal_action(action: SignedActionHashed) -> ExternResult<()> {
     match action.hashed.content.clone() {
         Action::CreateLink(create_link) => {
-            if
-                let Ok(Some(link_type)) = LinkTypes::from_type(
-                    create_link.zome_index,
-                    create_link.link_type
-                )
+            if let Ok(Some(link_type)) =
+                LinkTypes::from_type(create_link.zome_index, create_link.link_type)
             {
-                emit_signal(Signal::LinkCreated {
-                    action,
-                    link_type,
-                })?;
+                emit_signal(Signal::LinkCreated { action, link_type })?;
             }
             Ok(())
         }
         Action::DeleteLink(delete_link) => {
             let record = get(delete_link.link_add_address.clone(), GetOptions::default())?.ok_or(
-                wasm_error!(WasmErrorInner::Guest("Failed to fetch CreateLink action".to_string()))
+                wasm_error!(WasmErrorInner::Guest(
+                    "Failed to fetch CreateLink action".to_string()
+                )),
             )?;
             match record.action() {
                 Action::CreateLink(create_link) => {
-                    if
-                        let Ok(Some(link_type)) = LinkTypes::from_type(
-                            create_link.zome_index,
-                            create_link.link_type
-                        )
+                    if let Ok(Some(link_type)) =
+                        LinkTypes::from_type(create_link.zome_index, create_link.link_type)
                     {
                         emit_signal(Signal::LinkDeleted {
                             action,
@@ -97,9 +94,9 @@ fn signal_action(action: SignedActionHashed) -> ExternResult<()> {
                     }
                     Ok(())
                 }
-                _ => {
-                    Err(wasm_error!(WasmErrorInner::Guest("Create Link should exist".to_string())))
-                }
+                _ => Err(wasm_error!(WasmErrorInner::Guest(
+                    "Create Link should exist".to_string()
+                ))),
             }
         }
         Action::Create(_create) => {
@@ -138,7 +135,7 @@ fn signal_action(action: SignedActionHashed) -> ExternResult<()> {
                                 })
                                 .unwrap()
                         })
-                        // .filter(|agent| *agent != agent_info().unwrap().agent_latest_pubkey)
+                        .filter(|agent| *agent != agent_info().unwrap().agent_latest_pubkey)
                         .collect();
 
                     let length = members.len();
@@ -152,10 +149,8 @@ fn signal_action(action: SignedActionHashed) -> ExternResult<()> {
         }
         Action::Update(update) => {
             if let Ok(Some(app_entry)) = get_entry_for_action(&action.hashed.hash) {
-                if
-                    let Ok(Some(original_app_entry)) = get_entry_for_action(
-                        &update.original_action_address
-                    )
+                if let Ok(Some(original_app_entry)) =
+                    get_entry_for_action(&update.original_action_address)
                 {
                     emit_signal(Signal::EntryUpdated {
                         action,
@@ -182,23 +177,19 @@ fn signal_action(action: SignedActionHashed) -> ExternResult<()> {
 fn get_entry_for_action(action_hash: &ActionHash) -> ExternResult<Option<EntryTypes>> {
     let record = match get_details(action_hash.clone(), GetOptions::default())? {
         Some(Details::Record(record_details)) => record_details.record,
-        _ => {
-            return Ok(None);
-        }
+        _ => return Ok(None),
     };
     let entry = match record.entry().as_option() {
         Some(entry) => entry,
-        None => {
-            return Ok(None);
-        }
+        None => return Ok(None),
     };
     let (zome_index, entry_index) = match record.action().entry_type() {
-        Some(EntryType::App(AppEntryDef { zome_index, entry_index, .. })) => {
-            (zome_index, entry_index)
-        }
-        _ => {
-            return Ok(None);
-        }
+        Some(EntryType::App(AppEntryDef {
+            zome_index,
+            entry_index,
+            ..
+        })) => (zome_index, entry_index),
+        _ => return Ok(None),
     };
     EntryTypes::deserialize_from_type(*zome_index, *entry_index, entry)
 }

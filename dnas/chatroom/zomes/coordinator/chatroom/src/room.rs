@@ -1,19 +1,29 @@
-use hdk::prelude::*;
 use chatroom_integrity::*;
+use hdk::prelude::*;
 
 #[hdk_extern]
 pub fn create_room(room: Room) -> ExternResult<Record> {
     let room_hash = create_entry(&EntryTypes::Room(room.clone()))?;
-    create_link(room.creator.clone(), room_hash.clone(), LinkTypes::CreatorToRooms, ())?;
+    create_link(
+        room.creator.clone(),
+        room_hash.clone(),
+        LinkTypes::CreatorToRooms,
+        (),
+    )?;
 
     create_link(room.creator.clone(), room_hash.clone(), LinkTypes::MemberToRooms, ())?;
     create_link(room_hash.clone(), room.creator.clone(), LinkTypes::RoomToMembers, ())?;
 
-    let record = get(room_hash.clone(), GetOptions::default())?.ok_or(
-        wasm_error!(WasmErrorInner::Guest("Could not find the newly created Room".to_string()))
-    )?;
+    let record = get(room_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find the newly created Room".to_string())
+    ))?;
     let path = Path::from("all_rooms");
-    create_link(path.path_entry_hash()?, room_hash.clone(), LinkTypes::AllRooms, ())?;
+    create_link(
+        path.path_entry_hash()?,
+        room_hash.clone(),
+        LinkTypes::AllRooms,
+        (),
+    )?;
     Ok(record)
 }
 
@@ -24,9 +34,9 @@ pub fn get_room(room_hash: ActionHash) -> ExternResult<Option<Record>> {
     };
     match details {
         Details::Record(details) => Ok(Some(details.record)),
-        _ => {
-            Err(wasm_error!(WasmErrorInner::Guest("Malformed get details response".to_string())))
-        }
+        _ => Err(wasm_error!(WasmErrorInner::Guest(
+            "Malformed get details response".to_string()
+        ))),
     }
 }
 

@@ -4,31 +4,40 @@
   import CreateMessage from './CreateMessage.svelte'
   import {
     encodeHashToBase64,
+    SignalType,
     type ActionHash,
     type AppClient,
     type Link,
   } from '@holochain/client'
-  import { clientContext } from '../../contexts'
+  import { type ClientContext, clientContext } from "../../contexts";
   import type { ChatroomSignal } from '../../types'
 
-  let client: AppClient = (getContext(clientContext) as any).getClient()
+  let client: AppClient;
+  const appClientContext = getContext<ClientContext>(clientContext);
 
-  export let roomHash!: ActionHash
-
-  let hashes: Array<ActionHash> | undefined
+  import { currentRoute } from '../../stores/navigation'
+  import { decodeHashFromBase64 } from '@holochain/client'
+  
+  let roomHash: ActionHash | undefined
+  let hashes: Array<ActionHash> = []
   let error: any = undefined
   let loading = true
-  let scrollContainer: HTMLDivElement
 
-  $: hashes, error, loading, roomHash
   onMount(async () => {
-    if (roomHash == undefined) {
-      throw new Error(`roomHash is undefined`)
+    client = await appClientContext.getClient();
+    
+    console.log($currentRoute.roomHash);
+    if ($currentRoute.roomHash) {
+      roomHash = decodeHashFromBase64($currentRoute.roomHash)
+      await fetchMessages()
+    } else {
+      error = new Error('No room hash provided in route')
+      loading = false
     }
-    await fetchMessages()
     client.on('signal', (signal) => {
-      if (signal.zome_name !== 'chatroom') return
-      const payload = signal.payload as ChatroomSignal
+      if (!(SignalType.App in signal)) return;
+      if (signal.App.zome_name !== "chatroom") return;
+      const payload = signal.App.payload as ChatroomSignal;
       switch (payload.type) {
         case 'EntryCreated':
           if (payload.app_entry.type === 'Message')
@@ -52,7 +61,6 @@
   async function addMessage(message: ActionHash) {
     await new Promise((resolve) => setTimeout(resolve, 1000))
     hashes = [...hashes, message]
-    setTimeout(scrollToBottom, 0)
   }
 
   async function fetchMessages() {
@@ -66,37 +74,27 @@
       })
 
       hashes = links.map((l) => l.target)
-      setTimeout(scrollToBottom, 0)
     } catch (e) {
       error = e
     }
     loading = false
   }
-
-  $: if (hashes) {
-    setTimeout(scrollToBottom, 0)
-  }
-
-  function scrollToBottom() {
-    if (scrollContainer) {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight
-    }
-  }
 </script>
 
-<div
-  style="padding: 16px; padding-top: 0; box-sizing: border-box; flex: 1; display: flex; flex-direction: column-reverse; height: 100%; max-width: 600px; width: 100%; margin-left: auto; margin-right: auto;"
->
-  <CreateMessage {roomHash} creator={client.myPubKey} />
-  <span style="height: 32px; display: block;"></span>
+<div>
   {#if loading}
-    <mwc-circular-progress indeterminate></mwc-circular-progress>
+    <div
+      style="display: flex; flex: 1; align-items: center; justify-content: center"
+    >
+      Loading...
+    </div>
   {:else if error}
-    <span>Error fetching the messages: {error}.</span>
+    <span>Error fetching the messages: {error.data}.</span>
+  {:else if hashes.length === 0}
+    <span>No Messages found.</span>
   {:else}
     <div
-      bind:this={scrollContainer}
-      style="display: flex; flex-direction: column; overflow: auto; direction: ltr;"
+      style="display: flex; flex-direction: column; overflow: auto; max-height: 500px;"
     >
       {#each hashes as hash}
         <div style="margin-bottom: 8px;">
@@ -108,3 +106,6 @@
     </div>
   {/if}
 </div>
+{#if client }
+<CreateMessage {roomHash} creator={client.myPubKey} />
+{/if}

@@ -1,30 +1,30 @@
 import { assert, test } from "vitest";
 
-import { runScenario, dhtSync, CallableCell } from '@holochain/tryorama';
 import {
-  NewEntryAction,
   ActionHash,
-  Record,
-  Link,
+  AppBundleSource,
   CreateLink,
   DeleteLink,
-  SignedActionHashed,
-  AppBundleSource,
   fakeActionHash,
   fakeAgentPubKey,
-  fakeEntryHash
-} from '@holochain/client';
-import { decode } from '@msgpack/msgpack';
+  fakeEntryHash,
+  Link,
+  NewEntryAction,
+  Record,
+  SignedActionHashed,
+} from "@holochain/client";
+import { CallableCell, dhtSync, runScenario } from "@holochain/tryorama";
+import { decode } from "@msgpack/msgpack";
 
-import { createMessage, sampleMessage } from './common.js';
+import { createMessage, sampleMessage } from "./common.js";
 
-test('create Message', async () => {
+test("create Message", async () => {
   await runScenario(async scenario => {
     // Construct proper paths for your app.
     // This assumes app bundle created by the `hc app pack` command.
-    const testAppPath = process.cwd() + '/../workdir/c-4.happ';
+    const testAppPath = process.cwd() + "/../workdir/chatroom.happ";
 
-    // Set up the app to be installed 
+    // Set up the app to be installed
     const appSource = { appBundleSource: { path: testAppPath } };
 
     // Add 2 players with the test app to the Scenario. The returned players
@@ -41,13 +41,13 @@ test('create Message', async () => {
   });
 });
 
-test('create and read Message', async () => {
+test("create and read Message", async () => {
   await runScenario(async scenario => {
     // Construct proper paths for your app.
     // This assumes app bundle created by the `hc app pack` command.
-    const testAppPath = process.cwd() + '/../workdir/c-4.happ';
+    const testAppPath = process.cwd() + "/../workdir/chatroom.happ";
 
-    // Set up the app to be installed 
+    // Set up the app to be installed
     const appSource = { appBundleSource: { path: testAppPath } };
 
     // Add 2 players with the test app to the Scenario. The returned players
@@ -79,7 +79,7 @@ test('create and read Message', async () => {
     let linksToCreators: Link[] = await bob.cells[0].callZome({
       zome_name: "chatroom",
       fn_name: "get_messages_for_creator",
-      payload: sample.creator
+      payload: sample.creator,
     });
     assert.equal(linksToCreators.length, 1);
     assert.deepEqual(linksToCreators[0].target, record.signed_action.hashed.hash);
@@ -87,11 +87,9 @@ test('create and read Message', async () => {
     let linksToRooms: Link[] = await bob.cells[0].callZome({
       zome_name: "chatroom",
       fn_name: "get_messages_for_room",
-      payload: sample.room_hash
+      payload: sample.room_hash,
     });
     assert.equal(linksToRooms.length, 1);
     assert.deepEqual(linksToRooms[0].target, record.signed_action.hashed.hash);
   });
 });
-
-

@@ -1,79 +1,63 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount, getContext } from 'svelte'
-  import '@material/mwc-circular-progress'
-  import { decode } from '@msgpack/msgpack'
-  import type {
-    Record,
-    ActionHash,
-    AppClient,
-    EntryHash,
-    AgentPubKey,
-    DnaHash,
-  } from '@holochain/client'
-  import { clientContext } from '../../contexts'
-  import type { Room } from './types'
-  import '@material/mwc-circular-progress'
-  import type { Snackbar } from '@material/mwc-snackbar'
-  import '@material/mwc-snackbar'
-  import '@material/mwc-icon-button'
+import type { ActionHash, AgentPubKey, AppClient, DnaHash, EntryHash, HolochainError, Record } from "@holochain/client";
+import { decode } from "@msgpack/msgpack";
+import { createEventDispatcher, getContext, onMount } from "svelte";
+import { type ClientContext, clientContext } from "../../contexts";
+import type { Room } from "./types";
 
-  const dispatch = createEventDispatcher()
+let client: AppClient;
+const appClientContext = getContext<ClientContext>(clientContext);
+const dispatch = createEventDispatcher();
 
-  export let roomHash: ActionHash
+let loading: boolean = false;
+let error: HolochainError | undefined;
+let record: Record | undefined;
+let room: Room | undefined;
 
-  let client: AppClient = (getContext(clientContext) as any).getClient()
+export let roomHash: ActionHash;
 
-  let loading: boolean
-  let error: any = undefined
+$: error, loading, record, room;
 
-  let record: Record | undefined
-  let room: Room | undefined
-
-  $: error, loading, record, room
-
-  onMount(async () => {
-    if (roomHash === undefined) {
-      throw new Error(
-        `The roomHash input is required for the RoomDetail element`
-      )
-    }
-    await fetchRoom()
-  })
-
-  async function fetchRoom() {
-    loading = true
-
-    try {
-      record = await client.callZome({
-        cap_secret: null,
-        role_name: 'chatroom',
-        zome_name: 'chatroom',
-        fn_name: 'get_room',
-        payload: roomHash,
-      })
-      if (record) {
-        room = decode((record.entry as any).Present.entry) as Room
-      }
-    } catch (e) {
-      error = e
-    }
-
-    loading = false
+onMount(async () => {
+  if (roomHash === undefined) {
+    throw new Error(`The roomHash input is required for the RoomDetail element`);
   }
+  client = await appClientContext.getClient();
+  await fetchRoom();
+});
+
+async function fetchRoom() {
+  loading = true;
+  try {
+    record = await client.callZome({
+      cap_secret: null,
+      role_name: "chatroom",
+      zome_name: "chatroom",
+      fn_name: "get_room",
+      payload: roomHash,
+    });
+    if (record) {
+      room = decode((record.entry as any).Present.entry) as Room;
+    }
+  } catch (e) {
+    error = e as HolochainError;
+  } finally {
+    loading = false;
+  }
+}
 </script>
 
 {#if loading}
-  <div
-    style="display: flex; flex: 1; align-items: center; justify-content: center"
-  >
-    <mwc-circular-progress indeterminate></mwc-circular-progress>
-  </div>
+  <progress />
 {:else if error}
-  <span>Error fetching the room: {error}</span>
+  <div class="alert">Error fetching the room: {error.message}</div>
 {:else}
-  <div style="display: flex; flex-direction: column">
-    <div style="display: flex; flex-direction: row">
-      <span style="flex: 1"></span>
+  <section>
+    <div>
+      <span><strong>Name:</strong></span>
+      <span>{room?.name}</span>
     </div>
-  </div>
+
+    <div></div>
+  </section>
 {/if}

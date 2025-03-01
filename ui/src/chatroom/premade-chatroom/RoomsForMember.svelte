@@ -1,14 +1,15 @@
 <script lang="ts">
   import { onMount, getContext } from 'svelte'
-  import '@material/mwc-circular-progress'
   import type { ActionHash, AgentPubKey, AppClient } from '@holochain/client'
-  import { clientContext } from '../../contexts'
+  import { SignalType } from "@holochain/client";
+  import { type ClientContext, clientContext } from "../../contexts";
   import RoomDetail from './SearchRoomsListing.svelte'
   import type { ChatroomSignal } from '../../types'
 
   export let member: AgentPubKey
 
-  let client: AppClient = (getContext(clientContext) as any).getClient()
+  let client: AppClient;
+  const appClientContext = getContext<ClientContext>(clientContext);
 
   let hashes: Array<ActionHash> | undefined
 
@@ -18,6 +19,7 @@
   $: hashes, loading, error
 
   onMount(async () => {
+    client = await appClientContext.getClient();
     if (member === undefined) {
       throw new Error(
         `The member input is required for the RoomsForMember element`
@@ -39,8 +41,9 @@
     loading = false
 
     client.on('signal', (signal) => {
-      if (signal.zome_name !== 'chatroom') return
-      const payload = signal.payload as ChatroomSignal
+      if (!(SignalType.App in signal)) return;
+      if (signal.App.zome_name !== "chatroom") return;
+      const payload = signal.App.payload as ChatroomSignal;
       if (payload.type !== 'LinkCreated') return
       if (payload.link_type !== 'MemberToRooms') return
 
@@ -53,10 +56,10 @@
   <div
     style="display: flex; flex: 1; align-items: center; justify-content: center"
   >
-    <mwc-circular-progress indeterminate></mwc-circular-progress>
+    Loading...
   </div>
 {:else if error}
-  <span>Error fetching rooms: {error}.</span>
+  <span>Error fetching rooms: {error.data}.</span>
 {:else if hashes.length === 0}
   <span>No rooms found for this member.</span>
 {:else}

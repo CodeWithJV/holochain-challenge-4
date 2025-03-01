@@ -1,79 +1,94 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount, getContext } from 'svelte'
-  import '@material/mwc-circular-progress'
-  import { decode } from '@msgpack/msgpack'
-  import type {
-    Record,
-    ActionHash,
-    AppClient,
-    EntryHash,
-    AgentPubKey,
-    DnaHash,
-  } from '@holochain/client'
-  import { clientContext } from '../../contexts'
-  import type { Message } from './types'
-  import '@material/mwc-circular-progress'
-  import type { Snackbar } from '@material/mwc-snackbar'
-  import '@material/mwc-snackbar'
-  import '@material/mwc-icon-button'
+import type { ActionHash, AgentPubKey, AppClient, DnaHash, EntryHash, HolochainError, Record } from "@holochain/client";
+import { decode } from "@msgpack/msgpack";
+import { createEventDispatcher, getContext, onMount } from "svelte";
+import { type ClientContext, clientContext } from "../../contexts";
+import type { Message } from "./types";
 
-  const dispatch = createEventDispatcher()
+const INITIAL_RETRY_DELAY = 1000; // 1 second
+const MAX_RETRIES = 5;
 
-  export let messageHash: ActionHash
+let client: AppClient;
+let retryCount = 0;
+let retryTimeout: NodeJS.Timeout | undefined;
+const appClientContext = getContext<ClientContext>(clientContext);
+const dispatch = createEventDispatcher();
 
-  let client: AppClient = (getContext(clientContext) as any).getClient()
+let loading: boolean = false;
+let error: HolochainError | undefined;
+let record: Record | undefined;
+let message: Message | undefined;
 
-  let loading: boolean
-  let error: any = undefined
+export let messageHash: ActionHash;
 
-  let record: Record | undefined
-  let message: Message | undefined
+$: error, loading, record, message;
 
-  $: error, loading, record, message
-
-  onMount(async () => {
-    if (messageHash === undefined) {
-      throw new Error(
-        `The messageHash input is required for the MessageDetail element`
-      )
-    }
-    await fetchMessage()
-  })
-
-  async function fetchMessage() {
-    loading = true
-
-    try {
-      record = await client.callZome({
-        cap_secret: null,
-        role_name: 'chatroom',
-        zome_name: 'chatroom',
-        fn_name: 'get_message',
-        payload: messageHash,
-      })
-      if (record) {
-        message = decode((record.entry as any).Present.entry) as Message
-      }
-    } catch (e) {
-      error = e
-    }
-
-    loading = false
+onMount(async () => {
+  if (messageHash === undefined) {
+    throw new Error(`The messageHash input is required for the MessageDetail element`);
   }
+  client = await appClientContext.getClient();
+  await fetchMessage();
+});
+
+async function fetchMessage() {
+  loading = true;
+  error = undefined;
+  
+  try {
+    record = await client.callZome({
+      cap_secret: null,
+      role_name: "chatroom",
+      zome_name: "chatroom",
+      fn_name: "get_message",
+      payload: messageHash,
+    });
+    
+    if (record) {
+      message = decode((record.entry as any).Present.entry) as Message;
+      retryCount = 0; // Reset retry count on success
+    } else {
+      console.log('not found');
+      if (retryCount < MAX_RETRIES) {
+        const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+        retryCount++;
+        console.log(`Message not found, retrying in ${delay}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+        retryTimeout = setTimeout(fetchMessage, delay);
+      } else {
+        console.log('Max retries reached, giving up');
+        error = new Error('Failed to load message after maximum retries') as HolochainError;
+      }
+    }
+  } catch (e) {
+    error = e as HolochainError;
+    console.log(e);
+    if (retryCount < MAX_RETRIES) {
+      const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+      retryCount++;
+      console.log(`Error fetching message, retrying in ${delay}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+      retryTimeout = setTimeout(fetchMessage, delay);
+    }
+  } finally {
+    loading = false;
+  }
+}
 </script>
 
 {#if loading}
-  <div
-    style="display: flex; flex: 1; align-items: center; justify-content: center"
-  >
-    <mwc-circular-progress indeterminate></mwc-circular-progress>
-  </div>
+  <progress />
 {:else if error}
-  <span>Error fetching the message: {error}</span>
+  <div class="alert">Error fetching the message: {error.message}</div>
 {:else}
-  <div style="display: flex; flex-direction: column">
-    <div style="display: flex; flex-direction: row">
-      <span style="flex: 1"></span>
+  <section>
+    <div>
+      <span><strong>Content:</strong></span>
+      <span>{message ? message?.content :  'Loading...'}</span>
     </div>
-  </div>
+    <div>
+      <span><strong>Timestamp:</strong></span>
+      <span>{new Date(message?.timestamp / 1000).toLocaleString()}</span>
+    </div>
+
+    <div></div>
+  </section>
 {/if}

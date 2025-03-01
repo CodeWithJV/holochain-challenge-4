@@ -1,6 +1,6 @@
-<script>
+<script lang="ts">
   let button
-  export let onClick = () => {}
+  export let onClick: () => void;
 </script>
 
 <!-- svelte-ignore a11y-mouse-events-have-key-events -->

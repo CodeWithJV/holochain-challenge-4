@@ -1,88 +1,77 @@
 <script lang="ts">
-  import { onMount, getContext } from 'svelte'
-  import '@material/mwc-circular-progress'
-  import type {
-    Link,
-    ActionHash,
-    EntryHash,
-    AppClient,
-    Record,
-    AgentPubKey,
-    NewEntryAction,
-  } from '@holochain/client'
-  import { clientContext } from '../../contexts'
-  import type { Message, ChatroomSignal } from './types'
-  import MessageDetail from './MessageDetail.svelte'
+import type {
+  ActionHash,
+  AgentPubKey,
+  AppClient,
+  EntryHash,
+  HolochainError,
+  Link,
+  NewEntryAction,
+  Record,
+  SignalType,
+} from "@holochain/client";
+import { SignalType } from "@holochain/client";
+import { getContext, onMount } from "svelte";
+import { type ClientContext, clientContext } from "../../contexts";
+import MessageDetail from "./MessageDetail.svelte";
+import type { ChatroomSignal, Message } from "./types";
 
-  export let roomHash: ActionHash
+let client: AppClient;
+const appClientContext = getContext<ClientContext>(clientContext);
 
-  let client: AppClient = (getContext(clientContext) as any).getClient()
+let hashes: Array<ActionHash> | undefined = [];
+let loading: boolean;
+let error: any = undefined;
 
-  let hashes: Array<ActionHash> | undefined = []
+export let roomHash: ActionHash;
 
-  let loading: boolean
-  let error: any = undefined
+$: hashes, loading, error;
 
-  $: hashes, loading, error
-
-  onMount(async () => {
-    if (roomHash === undefined) {
-      throw new Error(
-        `The roomHash input is required for the MessagesForRoom element`
-      )
-    }
-
-    await fetchMessages()
-
-    client.on('signal', async (signal) => {
-      if (signal.zome_name !== 'chatroom') return
-      const payload = signal.payload as ChatroomSignal
-      if (
-        !(
-          payload.type === 'EntryCreated' &&
-          payload.app_entry.type === 'Message'
-        )
-      )
-        return
-      await fetchMessages()
-    })
-  })
-
-  async function fetchMessages() {
-    loading = true
-    try {
-      const links: Array<Link> = await client.callZome({
-        cap_secret: null,
-        role_name: 'chatroom',
-        zome_name: 'chatroom',
-        fn_name: 'get_messages_for_room',
-        payload: roomHash,
-      })
-      hashes = links.map((l) => l.target)
-    } catch (e) {
-      error = e
-    }
-    loading = false
+onMount(async () => {
+  if (roomHash === undefined) {
+    throw new Error(`The roomHash input is required for the MessagesForRoom element`);
   }
+  client = await appClientContext.getClient();
+  await fetchMessages();
+
+  client.on("signal", async signal => {
+    if (!(SignalType.App in signal)) return;
+    if (signal.App.zome_name !== "chatroom") return;
+    const payload = signal.App.payload as ChatroomSignal;
+    if (!(payload.type === "EntryCreated" && payload.app_entry.type === "Message")) return;
+    await fetchMessages();
+  });
+});
+
+async function fetchMessages() {
+  loading = true;
+  try {
+    const links: Array<Link> = await client.callZome({
+      cap_secret: null,
+      role_name: "chatroom",
+      zome_name: "chatroom",
+      fn_name: "get_messages_for_room",
+      payload: roomHash,
+    });
+    hashes = links.map(l => l.target);
+  } catch (e) {
+    error = e as HolochainError;
+  } finally {
+    loading = false;
+  }
+}
 </script>
 
 {#if loading}
-  <div
-    style="display: flex; flex: 1; align-items: center; justify-content: center"
-  >
-    <mwc-circular-progress indeterminate></mwc-circular-progress>
-  </div>
+  <progress />
 {:else if error}
-  <span>Error fetching messages: ${error}.</span>
+  <div class="alert">Error fetching messages: ${error.message}.</div>
 {:else if hashes.length === 0}
-  <span>No messages found for this room.</span>
+  <div class="alert">No messages found for this room.</div>
 {:else}
-  <div style="display: flex; flex-direction: column">
+  <div>
     {#each hashes as hash}
-      <div style="margin-bottom: 8px;">
-        <MessageDetail messageHash={hash} on:message-deleted={fetchMessages}
-        ></MessageDetail>
-      </div>
+      <MessageDetail messageHash={hash} on:message-deleted={fetchMessages} />
     {/each}
   </div>
 {/if}

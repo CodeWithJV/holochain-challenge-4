@@ -1,5 +1,5 @@
-use hdk::prelude::*;
 use chatroom_integrity::*;
+use hdk::prelude::*;
 
 #[hdk_extern]
 pub fn create_message(message: Message) -> ExternResult<Record> {
@@ -16,13 +16,9 @@ pub fn create_message(message: Message) -> ExternResult<Record> {
         LinkTypes::RoomToMessages,
         (),
     )?;
-    let record = get(message_hash.clone(), GetOptions::default())?
-        .ok_or(
-            wasm_error!(
-                WasmErrorInner::Guest("Could not find the newly created Message"
-                .to_string())
-            ),
-        )?;
+    let record = get(message_hash.clone(), GetOptions::default())?.ok_or(wasm_error!(
+        WasmErrorInner::Guest("Could not find the newly created Message".to_string())
+    ))?;
     Ok(record)
 }
 
@@ -33,26 +29,18 @@ pub fn get_message(message_hash: ActionHash) -> ExternResult<Option<Record>> {
     };
     match details {
         Details::Record(details) => Ok(Some(details.record)),
-        _ => {
-            Err(
-                wasm_error!(
-                    WasmErrorInner::Guest("Malformed get details response".to_string())
-                ),
-            )
-        }
+        _ => Err(wasm_error!(WasmErrorInner::Guest(
+            "Malformed get details response".to_string()
+        ))),
     }
 }
 
 #[hdk_extern]
 pub fn get_messages_for_creator(creator: AgentPubKey) -> ExternResult<Vec<Link>> {
-    get_links(
-        GetLinksInputBuilder::try_new(creator, LinkTypes::CreatorToMessages)?.build(),
-    )
+    get_links(GetLinksInputBuilder::try_new(creator, LinkTypes::CreatorToMessages)?.build())
 }
 
 #[hdk_extern]
 pub fn get_messages_for_room(room_hash: ActionHash) -> ExternResult<Vec<Link>> {
-    get_links(
-        GetLinksInputBuilder::try_new(room_hash, LinkTypes::RoomToMessages)?.build(),
-    )
+    get_links(GetLinksInputBuilder::try_new(room_hash, LinkTypes::RoomToMessages)?.build())
 }

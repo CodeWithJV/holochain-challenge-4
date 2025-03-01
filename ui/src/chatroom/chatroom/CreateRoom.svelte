@@ -1,73 +1,57 @@
 <script lang="ts">
-  import { createEventDispatcher, getContext, onMount } from 'svelte'
-  import type {
-    AppClient,
-    Record,
-    EntryHash,
-    AgentPubKey,
-    ActionHash,
-    DnaHash,
-  } from '@holochain/client'
-  import { clientContext } from '../../contexts'
-  import type { Room } from './types'
-  import '@material/mwc-button'
-  import '@material/mwc-snackbar'
-  import type { Snackbar } from '@material/mwc-snackbar'
+import type { ActionHash, AgentPubKey, AppClient, DnaHash, EntryHash, HolochainError, Record } from "@holochain/client";
+import { createEventDispatcher, getContext, onMount } from "svelte";
+import { type ClientContext, clientContext } from "../../contexts";
+import type { Room } from "./types";
 
-  let client: AppClient = (getContext(clientContext) as any).getClient()
+const dispatch = createEventDispatcher();
+let client: AppClient;
+const appClientContext = getContext<ClientContext>(clientContext);
 
-  const dispatch = createEventDispatcher()
+let name: string = "";
 
-  export let name!: string
+export let creator!: AgentPubKey;
 
-  export let creator!: AgentPubKey
+$: name, creator;
+$: isRoomValid = true && name !== "";
 
-  let errorSnackbar: Snackbar
-
-  $: name, creator
-  $: isRoomValid = true
-
-  onMount(() => {
-    if (name === undefined) {
-      throw new Error(`The name input is required for the CreateRoom element`)
-    }
-    if (creator === undefined) {
-      throw new Error(
-        `The creator input is required for the CreateRoom element`
-      )
-    }
-  })
-
-  async function createRoom() {
-    const roomEntry: Room = {
-      name: name!,
-      creator: creator!,
-    }
-
-    try {
-      const record: Record = await client.callZome({
-        cap_secret: null,
-        role_name: 'chatroom',
-        zome_name: 'chatroom',
-        fn_name: 'create_room',
-        payload: roomEntry,
-      })
-      dispatch('room-created', { roomHash: record.signed_action.hashed.hash })
-    } catch (e) {
-      errorSnackbar.labelText = `Error creating the room: ${error}`
-      errorSnackbar.show()
-    }
+onMount(async () => {
+  if (creator === undefined) {
+    throw new Error(`The creator input is required for the CreateRoom element`);
   }
+  client = await appClientContext.getClient();
+});
+
+async function createRoom() {
+  const roomEntry: Room = {
+    name: name!,
+    creator: creator!,
+  };
+
+  try {
+    const record: Record = await client.callZome({
+      cap_secret: null,
+      role_name: "chatroom",
+      zome_name: "chatroom",
+      fn_name: "create_room",
+      payload: roomEntry,
+    });
+    dispatch("room-created", { roomHash: record.signed_action.hashed.hash });
+  } catch (e) {
+    alert((e as HolochainError).message);
+  }
+}
 </script>
 
-<mwc-snackbar bind:this={errorSnackbar} leading> </mwc-snackbar>
-<div style="display: flex; flex-direction: column">
-  <span style="font-size: 18px">Create Room</span>
+<div>
+  <h3>Create Room</h3>
 
-  <mwc-button
-    raised
-    label="Create Room"
-    disabled={!isRoomValid}
-    on:click={() => createRoom()}
-  ></mwc-button>
+  <div>
+    <label for="Name">Name</label>
+    <textarea name="Name" bind:value={name} required />
+  </div>
+
+  <button disabled={!isRoomValid} on:click={() => createRoom()}>
+    Create Room
+  </button>
 </div>

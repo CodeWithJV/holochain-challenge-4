@@ -1,5 +1,5 @@
-use hdk::prelude::*;
 use chatroom_integrity::*;
+use hdk::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AddRoomForMemberInput {
@@ -13,9 +13,14 @@ pub fn add_room_for_member(input: AddRoomForMemberInput) -> ExternResult<()> {
         input.base_member.clone(),
         input.target_room_hash.clone(),
         LinkTypes::MemberToRooms,
-        ()
+        (),
     )?;
-    create_link(input.target_room_hash, input.base_member, LinkTypes::RoomToMembers, ())?;
+    create_link(
+        input.target_room_hash,
+        input.base_member,
+        LinkTypes::RoomToMembers,
+        (),
+    )?;
     Ok(())
 }
 
