@@ -11,7 +11,7 @@ In this challenge, we will build a messaging app. The frontend UI has been provi
 
 #### 1. Fork this repo and clone it onto your local machine
 
-#### 2. cd into `c-4` directory and run `nix develop`.
+#### 2. cd into `holochain-challenge-4` directory and run `nix develop`.
 
 #### 3. Run `npm i` to install package dependencies
 
