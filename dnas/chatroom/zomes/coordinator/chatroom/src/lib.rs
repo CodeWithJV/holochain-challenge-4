@@ -4,11 +4,26 @@ pub mod message;
 pub mod room;
 use chatroom_integrity::*;
 use hdk::prelude::*;
+use crate::member_to_rooms::get_members_for_room;
+
 
 // Called the first time a zome call is made to the cell containing this zome
 #[hdk_extern]
-pub fn init() -> ExternResult<InitCallbackResult> {
+pub fn init(_: ()) -> ExternResult<InitCallbackResult> {
+    let mut functions: BTreeSet<(ZomeName, FunctionName)> = BTreeSet::new();
+    functions.insert((ZomeName::from("chatroom"), FunctionName::from("recv_remote_signal")));
+    create_cap_grant(CapGrantEntry {
+        tag: "recv_remote_signal_unrestricted".into(),
+        access: CapAccess::Unrestricted,
+        functions: GrantedFunctions::Listed(functions),
+    })?;
     Ok(InitCallbackResult::Pass)
+}
+
+#[hdk_extern]
+fn recv_remote_signal(signal: Signal) -> ExternResult<()> {
+    emit_signal(signal)?;
+    Ok(())
 }
 
 // Don't modify this enum if you want the scaffolding tool to generate appropriate signals for your entries and links
@@ -36,6 +51,11 @@ pub enum Signal {
     EntryDeleted {
         action: SignedActionHashed,
         original_app_entry: EntryTypes,
+    },
+    RemoteMessageCreated {
+        action: SignedActionHashed,
+        app_entry: EntryTypes,
+        room_hash: ActionHash,
     },
 }
 
@@ -87,7 +107,43 @@ fn signal_action(action: SignedActionHashed) -> ExternResult<()> {
         }
         Action::Create(_create) => {
             if let Ok(Some(app_entry)) = get_entry_for_action(&action.hashed.hash) {
-                emit_signal(Signal::EntryCreated { action, app_entry })?;
+                let new_signal = Signal::EntryCreated {
+                    app_entry,
+                    action: action.clone(),
+                };
+                emit_signal(&new_signal)?;
+
+                // If the create action is of type Message
+                if
+                    action.action().entry_type().unwrap().clone() ==
+                    UnitEntryTypes::Message.try_into()?
+                {
+                    // Get the entry off the create action
+                    let record = get(action.hashed.hash.clone(), GetOptions::default())?.unwrap();
+                    let message = record.entry().to_app_option::<Message>().unwrap().unwrap();
+
+                    // Get the room hash from the entry
+                    let room_hash = message.room_hash;
+
+                    // Get the members for the room using the room hash
+                    let members: Vec<AgentPubKey> = get_members_for_room(room_hash.clone())?
+                        .into_iter()
+                        .map(|link| {
+                            AgentPubKey::try_from(link.target)
+                                .map_err(|_| {
+                                    wasm_error!(
+                                        WasmErrorInner::Guest(
+                                            String::from("Could not convert link to agent pub key")
+                                        )
+                                    )
+                                })
+                                .unwrap()
+                        })
+                        .filter(|agent| *agent != agent_info().unwrap().agent_latest_pubkey)
+                        .collect();
+
+                    let _ = send_remote_signal(new_signal, members);
+                }
             }
             Ok(())
         }

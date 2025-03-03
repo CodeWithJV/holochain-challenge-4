@@ -20,6 +20,8 @@ pub fn create_room(room: Room) -> ExternResult<Record> {
         LinkTypes::AllRooms,
         (),
     )?;
+    create_link(room.creator.clone(), room_hash.clone(), LinkTypes::MemberToRooms, ())?;
+    create_link(room_hash.clone(), room.creator.clone(), LinkTypes::RoomToMembers, ())?;
     Ok(record)
 }
 

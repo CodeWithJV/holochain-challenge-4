@@ -17,6 +17,11 @@
   let client: AppClient;
   const appClientContext = getContext<ClientContext>(clientContext);
 
+  const INITIAL_RETRY_DELAY = 1000; // 1 second
+  const MAX_RETRIES = 5;
+  let retryCount = 0;
+  let retryTimeout: NodeJS.Timeout | undefined;
+
   let loading: boolean
   let error: any = undefined
 
@@ -58,13 +63,28 @@
         message = decode((record.entry as any).Present.entry) as Message
         messageCreator = encodeHashToBase64(message?.creator)
         messageCreatorSliced = messageCreator.slice(0, 7)
+        retryCount = 0; // Reset retry count on success
       } else {
-      console.log('message undefined')
         message = undefined;
+        if (retryCount < MAX_RETRIES) {
+          const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+          retryCount++;
+          console.log(`Message not found, retrying in ${delay}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+          retryTimeout = setTimeout(fetchMessage, delay);
+        } else {
+          console.log('Max retries reached, giving up');
+          error = new Error('Failed to load message after maximum retries');
+        }
       }
     } catch (e) {
       console.log(e);
       error = e;
+      if (retryCount < MAX_RETRIES) {
+        const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+        retryCount++;
+        console.log(`Error fetching message, retrying in ${delay}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+        retryTimeout = setTimeout(fetchMessage, delay);
+      }
     }
 
     loading = false
@@ -79,6 +99,12 @@
       )
     }
     await fetchMessage()
+    // Return a cleanup function
+    return () => {
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+    };
   })
 </script>
 
@@ -104,6 +130,6 @@
     <span style="margin-right: 4px"
       ><strong>{messageCreatorSliced || 'Uknown'}:</strong></span
     >
-    <span style="white-space: pre-line">{message?.content}</span>
+    <span style="white-space: pre-line">{message?.content || 'Loading...'}</span>
   </div>
 {/if}
