@@ -40,7 +40,7 @@
       const payload = signal.App.payload as ChatroomSignal;
       switch (payload.type) {
         case 'EntryCreated':
-          if (payload.app_entry.type === 'Message')
+          if (payload.app_entry.type === 'Message' && encodeHashToBase64(payload.app_entry.room_hash) == encodeHashToBase64(roomHash))
             hashes = [...hashes, payload.action.hashed.hash]
           break
         default:

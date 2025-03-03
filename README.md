@@ -350,6 +350,8 @@ Inside `client.on()` Notice how when we receive a Message signal, we are instant
 
 The issue is that Signals are faster than DHT propoagation! The remote signal is being received and the new message is requested from the DHT before the DHT has properly registered the addition of the new message.
 
+We have access to the full entry content in `payload.app_entry` so why not just display that instead of forcing the Message component to load the hash contents?
+
 #### 6. Fix the issue of messages being undefined
 
 This issue isn't just about timing - it's actually an important security consideration. 
@@ -427,6 +429,12 @@ onMount(async () => {
 })
 ```
 
+You may also want to display loading instead of undefined
+
+```
+    <span style="white-space: pre-line">{message?.content || 'Loading...'} </span>
+```
+
 This approach provides several benefits:
 1. **Security**: We're fetching the validated message from the DHT rather than trusting the signal content
 2. **Reliability**: The exponential backoff retry mechanism gives more time for the DHT to fully process the message
@@ -435,140 +443,5 @@ This approach provides several benefits:
 
 The key security point is that we never trust the signal content directly - we always fetch and validate the actual message from the DHT.
 
-## Customizing remote signals
-
-Now that you've hopefully got your signals working, there's only one more issue to fix.
-
-#### 1. Run `npm start`, have one agent create two chatrooms, 'Movies' and 'Books'
-
-#### 2. Open up the 'Movies' chatroom using this agent.
-
-#### 3. Have another agent join the 'Books' chatroom and send a message.
-
-Notice the issue? Any new messages from any chatrooms an agent is in are received and added to the current conversation the agent is in, no matter what. However, we only want messages to be added to the conversation if they occur in this chatroom.
-
-#### 4. Navigate to `coordinator/chatroom/src/lib.rs` and add a new variant to the Signal enum called `RemoteMessageCreated`
-
-```rust
-// Add this to the Signal enum
-RemoteMessageCreated {
-    action: SignedActionHashed,
-    app_entry: EntryTypes,
-
-    // Notice the addition of this field!
-    room_hash: ActionHash,
-},
-
-// To use this variant, modify your signal_action function
-Action::Create(_create) => {
-    if let Ok(Some(app_entry)) = get_entry_for_action(&action.hashed.hash) {
-        emit_signal(Signal::EntryCreated {
-            app_entry: app_entry.clone(),
-            action: action.clone(),
-        })?;
-
-        // If the create action is of type Message
-        if
-            action.action().entry_type().unwrap().clone() ==
-            UnitEntryTypes::Message.try_into()?
-        {
-            // Get the entry off the create action
-            let record = get(action.hashed.hash.clone(), GetOptions::default())?.unwrap();
-            let message = record.entry().to_app_option::<Message>().unwrap().unwrap();
-            
-            // Get the room hash from the entry
-            let room_hash = message.room_hash;
-            
-            // Get the members for the room using the room hash
-            let members: Vec<AgentPubKey> = get_members_for_room(room_hash.clone())?
-                .into_iter()
-                .map(|link| {
-                    AgentPubKey::try_from(link.target)
-                        .map_err(|_| {
-                            wasm_error!(
-                                WasmErrorInner::Guest(
-                                    String::from("Could not convert link to agent pub key")
-                                )
-                            )
-                        })
-                        .unwrap()
-                })
-                .filter(|agent| *agent != agent_info().unwrap().agent_latest_pubkey)
-                .collect();
-            
-            // Send the RemoteMessageCreated variant instead
-            let remote_signal = Signal::RemoteMessageCreated {
-                app_entry: app_entry.clone(),
-                action: action.clone(),
-                room_hash,
-            };
-            
-            let _ = send_remote_signal(remote_signal, members);
-        }
-    }
-    Ok(())
-}
-```
-
-#### 5. Modify the `Action::Create` arm of the match statement inside `signal_action` to transmit a `RemoteMessageCreated` signal instead
-
-Note - It might be helpful to annotate your EntryTypes with `#[derive(Clone)]`!
-
-#### 6. Inside our frontend, add a new object to the `ChatroomSignal` type for `RemoteMessageCreated`
-
-```typescript
-// Add this to your ChatroomSignal type in types.ts
-export type ChatroomSignal = {
-  type: "EntryCreated";
-  action: SignedActionHashed<Create>;
-  app_entry: EntryTypes;
-} | {
-  type: "RemoteMessageCreated";
-  action: SignedActionHashed<Create>;
-  app_entry: EntryTypes;
-  room_hash: ActionHash;
-} | {
-  // other types...
-};
-```
-
-#### 7. Modify the `client.on()` function to only add the incoming message hash to the hashes array if `payload.room_hash` is equal to the room hash of the current chatroom
-
-<details>
-<summary>
-Hint
-</summary>
-
-```ts
-// In Conversation.svelte
-client.on('signal', (signal) => {
-  if (!(SignalType.App in signal)) return;
-  if (signal.App.zome_name !== "chatroom") return;
-  const payload = signal.App.payload as ChatroomSignal;
-  switch (payload.type) {
-    case 'EntryCreated':
-      if (payload.app_entry.type === 'Message')
-        hashes = [...hashes, payload.action.hashed.hash]
-      break
-    case 'RemoteMessageCreated':
-      if (
-        encodeHashToBase64(payload.room_hash) === encodeHashToBase64(roomHash)
-      )
-        addMessage(payload.action.hashed.hash)
-      break
-
-    default:
-      break
-  }
-  return
-})
-
-async function addMessage(message: ActionHash) {
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-  hashes = [...hashes, message]
-}
-```
-
-</details>
 
 Thats a wrap! 👏
