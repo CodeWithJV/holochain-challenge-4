@@ -26,7 +26,6 @@
   onMount(async () => {
     client = await appClientContext.getClient();
     
-    console.log($currentRoute.roomHash);
     if ($currentRoute.roomHash) {
       roomHash = decodeHashFromBase64($currentRoute.roomHash)
       await fetchMessages()
