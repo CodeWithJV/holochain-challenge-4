@@ -46,24 +46,25 @@ Provide the following values for the prompts:
 <summary>
 Tip!
 </summary>
-After each scaffold, you should read through the generated content to more deeply understand what the scaffold is actually creating.
+After each scaffold, you should read through the generated content to more deeply understand what the scaffold is actually creating. A lot of it will look familiar from earlier challenges.
 </details>
 
 #### 4. Run `hc scaffold entry-type`
 
 - Entry type name: `room`
-- Which fields should the entry contain? `String`
 - Field name: `name`
+- Which fields should the entry contain? `String`
 - Should this field be visible in the UI? `n`
   - Normally you'd choose yes, but in this instance we've created the frontend for you
 - Add another field to the entry? `y`
-- Fild name: `creator`
+- Field name: `creator`
 - Choose field type: `AgentPubKey`
 - Should a link from the AgentPubKey provided in this field also be created when entries of this type are created? `y`
   - Choosing this option will mean a link is created from the Creator Agent to the room in the DHT
 - Which role does this agent play in the relationship? `creator`
 - Field name: `creator`
 - Add another field to the entry? `n`
+- Confirm the fields are correct and hit 'Confirm'
 - Which CRUD functions should be scaffolded? - Untick both Update, and Delete options
 
 #### 5. Run `hc scaffold collection`
@@ -76,8 +77,8 @@ After each scaffold, you should read through the generated content to more deepl
 
 - Entry type name: `message`
 
-- Choose field type: `String`
 - Field name: `content`
+- Choose field type: `String`
 - Should this field be visible in the UI? `n`
 
 - Add another field to the entry? `y`
@@ -98,6 +99,7 @@ After each scaffold, you should read through the generated content to more deepl
   - Choosing yes will create a link from this action hash (the room_hash) to the message, when a message is being created
 - Which entry type is this field referring to? `Room`
 - Add another field to the entry? `n`
+- Confirm the fields are correct and hit 'Confirm'
 - Which CRUD functions should be scaffolded? - Untick both Update, and Delete options
 
 #### 7. Run `hc scaffold link-type`
