@@ -13,3 +13,8 @@ hdi = "=0.5.1"
 hdk = "=0.4.1"
 serde = "1.0"
 
+[workspace.dependencies.chatroom]
+path = "dnas/chatroom/zomes/coordinator/chatroom"
+
+[workspace.dependencies.chatroom_integrity]
+path = "dnas/chatroom/zomes/integrity/chatroom"
