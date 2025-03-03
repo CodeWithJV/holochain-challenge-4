@@ -74,13 +74,6 @@
 {:else if error}
   <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
     <p>Error fetching the rooms: {error}.</p>
-    <p style="color: #777; margin-top: 10px; text-align: center;">This is a known issue on first load. Please reload the page to fix it.</p>
-    <p style="color: #555; font-size: 0.9em; margin-top: 5px; text-align: center;">The Holochain conductor needs time to fully initialize.</p>
-    <button 
-      style="background-color: #4CAF50; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; margin-top: 12px;"
-      on:click={() => window.location.reload()}>
-      Reload Page
-    </button>
   </div>
 {:else if hashes.length === 0}
   <span>No rooms found.</span>
