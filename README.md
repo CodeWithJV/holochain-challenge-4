@@ -126,7 +126,28 @@ You will notice our client is trying to make a zome call to fetch the available 
 
 This is where the failing zome call, `get_not_joined_rooms_for_member` is coming from.
 
+<details>
+<summary>
+Function signature hint
+</summary>
+
+```rust
+pub fn get_not_joined_rooms_for_member(member: AgentPubKey) -> ExternResult<Vec<Link>>
+```
+</details>
+
+Which rust file should this code go in?
+
 #### 3. Navigate to `dnas/chatroom/zomes/coordinator/chatroom/src/member_to_rooms.rs` and implement a `get_not_joined_rooms_for_member` zome function that returns `ExternResult<Vec<Link>>`
+
+```rust
+// Implementing getNotJointRoomsForMember function:
+// Step 1: Get all the rooms from the DHT using the all_rooms path
+// Step 2: Get all rooms the member has already joined
+// Step 3: Convert the joined rooms to a HashSet for efficient lookups
+// Step 4: Filter the all_rooms list to exclude the rooms the member has already joined
+// Step 5: Return the filtered list of rooms that the member hasn't joined yet
+```
 
 <details>
 <summary>
@@ -159,18 +180,12 @@ pub fn get_not_joined_rooms_for_member(member: AgentPubKey) -> ExternResult<Vec<
 
 Now when you create a chatroom, different agents can join it.
 
-</details>
+Don't forget restart your server as we've changed some zome code.
 
-<details>
-<summary>
-Tip!
-</summary>
 
-Don't forget to Press `F5` or `Ctrl + R` to reload the window!
+#### 4. Have an agent auto join a room when they create it.
 
-</details>
-
-#### 4. Navigate to `coordinator/chatroom/src/room.rs` and modify the `create_room` function to also create two links: `RoomToMembers` and `MemberToRooms`
+Navigate to `coordinator/chatroom/src/room.rs` and modify the `create_room` function to also create two links: `RoomToMembers` and `MemberToRooms`
 
 This means that when an agent creates a new room, they will also 'join' it as a member.
 
@@ -185,9 +200,13 @@ This means that when an agent creates a new room, they will also 'join' it as a 
 
 </details>
 
+The behaviour change will be subtle but important. Now when a room is created and you click on the joined rooms icon in the top right of the UI the room will show up.
+
 ## Sending and receiving remote signals from other Agents
 
 In our app we can create chatrooms, join them, and send messages to other Agents inside them. However every time a chatroom is created or a new message is sent, we have to manually refresh the window to view the new changes.
+
+Try and create and join rooms from both your agents and chat with each other. You'll need to refresh the page a lot, which is lame. Let's make it better.
 
 In this section we will use remote signals create a live update on each client when a new message is sent to a chatroom.
 
@@ -213,7 +232,7 @@ Action::Create(_create) => {
 
         // If the create action's entry is of type Message
 
-        // Get the entry off the create action
+        // Get the entry of the create action
 
         // Get the room hash from the entry
 
@@ -226,6 +245,14 @@ Action::Create(_create) => {
     Ok(())
 }
 
+```
+
+This is a little different to the scaffolded code as we've extracted out a new_signal variable so we can easily reuse it for the remote signal.
+
+To access the get_members_for_room function you will need the following at the top of your file
+
+```rust
+use crate::member_to_rooms::get_members_for_room;
 ```
 
 <details>
@@ -292,7 +319,7 @@ fn recv_remote_signal(signal: Signal) -> ExternResult<()> {
 }
 ```
 
-This function will receive the remote signal from the network and forward it to the client's frontend
+This function will receive the remote signal from the network and forward it to the client's frontend. 
 
 #### 3. Replace the current `init` function inside `coordinator/chatroom/src/lib.rs` with the following code.
 
@@ -313,27 +340,27 @@ pub fn init(_: ()) -> ExternResult<InitCallbackResult> {
 }
 ```
 
-#### 4. Save the file, run `npm start`, and join both Agents into a chatroom.
+#### 4. Save the file, and restart your server.
 
-Now when you send a message, its instantly received by the other client! - Kind of!
+Now when you send a message, it is instantly received by the other client! - Kind of!
 
 #### 5. Navigate to the `onMount` function of `premade-chatroom-ui/Conversation.svelte`
 
-Inside `client.on()` Notice how when we receive a Message signal, we are instantly adding its hash to a 'hashes' array. This will cause svelte to rerender, and create a new `Message` Component, which will retrieve and display the Message record from the DHT by this hash.
+Inside `client.on()` Notice how when we receive a Message signal, we are instantly adding its hash to a 'hashes' array. This will cause svelte to re-render, and create a new `Message` Component, which will retrieve and display the Message record from the DHT by this hash.
 
-The issue is that the remote signal is being received and the new message is requested from the DHT before the DHT has properly registered the addition of the new message.
+The issue is that Signals are faster than DHT propoagation! The remote signal is being received and the new message is requested from the DHT before the DHT has properly registered the addition of the new message.
 
 #### 6. Fix the issue of messages being undefined
 
 This issue isn't just about timing - it's actually an important security consideration. 
 
-When we receive a signal that a new message was created, we shouldn't trust the signal content itself. A malicious agent could potentially craft signals claiming to be from anyone. Instead, we should:
+When we receive a signal that a new message was created, we shouldn't trust the signal content itself. Remember any agent in our network can send a signal and it will be blindly fowarded to our client. A malicious agent could potentially craft signals claiming to be from anyone. Instead, we should:
 
 1. Receive the signal that contains the hash of the new message
 2. Request the actual message record from the DHT
-3. By doing this, the message goes through proper validation and we know for sure it was actually created by the claimed author
+3. By doing this, the message goes through proper validation and we know for sure it was actually created by the claimed author.
 
-Unfortunately, there's a race condition here - sometimes our code tries to fetch the message before it's fully committed to the DHT. To solve this, we need to implement a retry mechanism in the `Message.svelte` component:
+Unfortunately, there's a race condition here - our code tries to fetch the message before it's fully committed to the DHT. To solve this, we need to implement a retry mechanism in the `Message.svelte` component:
 
 ```ts
 // At the top of your <script> section in Message.svelte
